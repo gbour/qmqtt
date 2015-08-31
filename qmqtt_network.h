@@ -34,6 +34,8 @@
 
 #include <QObject>
 #include <QTcpSocket>
+#include <QSslSocket>
+#include <QSslError>
 #include <QPointer>
 #include <QBuffer>
 #include <QByteArray>
@@ -42,10 +44,21 @@
 
 namespace QMQTT {
 
+// Transport mode
+enum Transport
+{
+    TCP = 0,
+    SSL
+};
+
+const QString _qTransportString[] { "TCP", "SSL" };
+#define QTransportString(t) _qTransportString[t]
+
 class Network : public QObject
 {
     Q_OBJECT
     Q_DISABLE_COPY(Network)
+
 public:
     explicit Network(QObject *parent = 0);
     ~Network();
@@ -67,7 +80,7 @@ signals:
     void received(Frame &frame);
 
 public slots:
-    void connectTo(const QString & host, quint32 port);
+    void connectTo(const QString & host, quint32 port, Transport transport);
     //void error( QAbstractSocket::SocketError socketError );
 
 private slots:
@@ -76,6 +89,8 @@ private slots:
     //TODO: FIX LATER, add reconnect feature
     //void sockError(QAbstractSocket::SocketError);
     void sockDisconnected();
+    void sockEncrypted();
+    void sockSslErrors(const QList<QSslError>& errors);
 
 private:
     void initSocket();
@@ -83,6 +98,8 @@ private:
     //sock
     quint32 _port;
     QString _host;
+    Transport _transport;
+
     QPointer<QTcpSocket> _socket;
     //read data
     QPointer<QBuffer> _buffer;

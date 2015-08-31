@@ -40,6 +40,7 @@ Q_LOGGING_CATEGORY(client, "qmqtt.client")
 ClientPrivate::ClientPrivate(Client *q) :
     host("localhost"),
     port(1883),
+    transport(Transport::TCP),
     keepalive(300),
     pq_ptr(q)
 {
@@ -68,16 +69,18 @@ void ClientPrivate::init(QObject * parent)
     QObject::connect(network, SIGNAL(received(Frame &)), pq_func(), SLOT(onReceived(Frame &)));
 }
 
-void ClientPrivate::init(const QString &host, int port, QObject * parent)
+void ClientPrivate::init(const QString &host, int port, Transport transport, QObject * parent)
 {
-    this->host = host;
-    this->port = port;
+    this->host      = host;
+    this->port      = port;
+    this->transport = transport;
+
     init(parent);
 }
 
 void ClientPrivate::sockConnect()
 {
-    network->connectTo(host, port);
+    network->connectTo(host, port, transport);
 }
 
 void ClientPrivate::sendConnect()

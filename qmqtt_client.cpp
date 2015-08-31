@@ -35,10 +35,10 @@
 
 namespace QMQTT {
 
-Client::Client(const QString & host, quint32 port, QObject * parent /* =0 */)
+Client::Client(const QString & host, quint32 port, Transport transport, QObject * parent /* =0 */)
     :pd_ptr(new ClientPrivate(this))
 {
-    pd_func()->init(host, port, parent);
+    pd_func()->init(host, port, transport, parent);
 }
 
 Client::~Client()

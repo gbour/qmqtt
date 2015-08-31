@@ -38,6 +38,7 @@ namespace QMQTT {
 
 Q_LOGGING_CATEGORY(network, "qmqtt.network")
 
+
 Network::Network(QObject *parent) :
     QObject(parent)
 {
@@ -48,18 +49,35 @@ Network::Network(QObject *parent) :
     _timeout = 3000;
     _connected = false;
     _buffer->open(QIODevice::ReadWrite);
-    initSocket();
 }
 
 void Network::initSocket()
 {
     if(_socket) {
+        qCWarning(network) << "socket already defined. Closing...";
         _socket->abort();
         delete _socket;
     }
 
-    _socket = new QTcpSocket(this);
-    connect(_socket, SIGNAL(connected()), this, SLOT(sockConnected()));
+    switch (_transport) {
+        case Transport::TCP:
+            _socket = new QTcpSocket(this);
+            connect(_socket, SIGNAL(connected()), this, SLOT(sockConnected()));
+            break;
+
+        case Transport::SSL:
+            _socket = new QSslSocket();
+            // deactivating ssl verifications
+            qobject_cast<QSslSocket*>(_socket)->setPeerVerifyMode(QSslSocket::PeerVerifyMode::VerifyNone);
+
+            connect(_socket, SIGNAL(encrypted()), this, SLOT(sockEncrypted()));
+            connect(qobject_cast<QSslSocket*>(_socket), SIGNAL(sslErrors(QList<QSslError>)),
+                    this, SLOT(sockSslErrors(QList<QSslError>)));
+            break;
+    }
+
+    qCDebug(network) << "socket" << _socket << "created (transport" << QTransportString(_transport) << ")";
+
     connect(_socket, SIGNAL(disconnected()), this, SLOT(sockDisconnected()));
     connect(_socket, SIGNAL(readyRead()), this, SLOT(sockReadReady()));
     connect(_socket, SIGNAL(error(QAbstractSocket::SocketError)), this, SIGNAL(error(QAbstractSocket::SocketError)));
@@ -75,18 +93,30 @@ bool Network::isConnected()
     return _connected;
 }
 
-void Network::connectTo(const QString & host, const quint32 port)
+void Network::connectTo(const QString & host, const quint32 port, const Transport transport)
 {
+    // shadow settings
+    _host      = host;
+    _port      = port;
+    _transport = transport;
 
+    initSocket();
     if(!_socket)
     {
-        qCWarning(network) << "AMQP: Socket didn't create.";
+        qCWarning(network) << "Failed to create socket";
         return;
     }
-    _host = host;
-    _port = port;
-    qCDebug(network) << "Connect to" << _host << _port;
-    _socket->connectToHost(host, port);
+
+    qCDebug(network) << "Connect to" << _host << _port << "transport" << QTransportString(_transport);
+    switch (transport) {
+        case Transport::TCP:
+            _socket->connectToHost(host, port);
+            break;
+
+        case Transport::SSL:
+            qobject_cast<QSslSocket*>(_socket)->connectToHostEncrypted(host, port);
+            break;
+    }
 }
 
 void Network::sendFrame(Frame & frame)
@@ -126,9 +156,21 @@ void Network::setAutoReconnect(bool b)
 }
 
 //PRIVATE SLOTS
+
+/*
+ * *connected *event is triggered as soon as Tcp connection is established
+ * For SSL connection, we prefer waiting that SSL negotiation is complete
+ * (*encrypted* event emitted)
+ */
 void Network::sockConnected()
 {
-    qCDebug(network) << "Network connected...";
+    qCDebug(network) << "Network connected (TCP)...";
+    _connected = true;
+    emit connected();
+}
+
+void Network::sockEncrypted() {
+    qCDebug(network) << "Network connected (SSL)...";
     _connected = true;
     emit connected();
 }
@@ -186,4 +228,9 @@ void Network::sockDisconnected()
     emit disconnected();
 }
 
+void Network::sockSslErrors(const QList<QSslError> &errors) {
+    qCDebug(network) << "sock SSL errors:" << errors;
+}
+
 } // namespace QMQTT
+
